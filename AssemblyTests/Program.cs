@@ -5,6 +5,8 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
 using System;
+using System.Linq;
+using Iced.Intel;
 
 namespace AssemblyTests
 {
@@ -12,6 +14,12 @@ namespace AssemblyTests
 	{
 		static void Main()
 		{
+			//JitDump code:
+			//Assembler.BasicActionDelegate @delegate = null;
+			//new Assembler().Compile(ref @delegate, Enumerable.Empty<Instruction>());
+
+			//@delegate();
+
 			BenchmarkRunner.Run<AssemblyBenchmarks>();
 		}
 	}

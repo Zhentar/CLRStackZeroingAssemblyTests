@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -62,7 +63,10 @@ namespace AssemblyTests
 					var ilGen = dm.GetILGenerator();
 					ilGen.Emit(OpCodes.Ldc_I8, (long)funcAddr);
 					ilGen.Emit(OpCodes.Conv_I);
-					ilGen.EmitCalli(OpCodes.Calli, CallingConvention.StdCall, typeof(void), null);
+					// If we're honest about what we're calling it adds a bunch of overhead, nanoseconds of it
+					// If we claim it's a managed function, it can JIT to a simple mov+jmp
+					//ilGen.EmitCalli(OpCodes.Calli, CallingConvention.StdCall, typeof(void), null);
+					ilGen.EmitCalli(OpCodes.Calli, CallingConventions.Standard, typeof(void), null, null);
 					ilGen.Emit(OpCodes.Ret);
 					result = (T) dm.CreateDelegate(typeof(T));
 				}
