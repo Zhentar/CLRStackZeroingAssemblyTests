@@ -7,25 +7,34 @@ namespace AssemblyTests
 {
 	public partial class Assembler
 	{
-		public delegate void BasicActionDelegate();
+		private readonly ExecutableCodeWriter _writer = new ExecutableCodeWriter("InlineAsm");
 
-		private readonly ExecutableCodeWriter _writer = new ExecutableCodeWriter();
-
-		public T Compile<T>(IList<Instruction> instructions) where T : Delegate
+		public T Compile<T>(IEnumerable<Instruction> instructions) where T : Delegate
 		{
-			var block = new InstructionBlock(_writer, instructions, _writer.NextFunctionPointer);
+			var instructionList = new InstructionList(instructions) { Instruction.Create(Code.Retnq) };
+			var block = new InstructionBlock(_writer, instructionList, _writer.NextFunctionPointer);
 			if (!BlockEncoder.TryEncode(IntPtr.Size * 8, block, out var errorMessage))
 			{
 				throw new InvalidOperationException(errorMessage);
 			}
 
-			return _writer.Commit<T>();
+			return _writer.CommitToPInvokeDelegate<T>();
 		}
 
 		public void Compile<T>(ref T @delegate, IEnumerable<Instruction> instructions) where T : Delegate
 		{
-			var instructionList = new InstructionList(instructions) { Instruction.Create(Code.Retnq) };
-			@delegate = Compile<T>(instructionList);
+			@delegate = Compile<T>(instructions);
+		}
+
+		public Type CompileDelegateType<T>(IEnumerable<Instruction> instructions, string methodName, Attribute[] typeAttributes = null, Attribute[] methodAttributes = null) where T : IAsmDelegate
+		{
+			var block = new InstructionBlock(_writer, new InstructionList(instructions) { Instruction.Create(Code.Retnq) }, _writer.NextFunctionPointer);
+			if (!BlockEncoder.TryEncode(IntPtr.Size * 8, block, out var errorMessage))
+			{
+				throw new InvalidOperationException(errorMessage);
+			}
+
+			return _writer.CommitToAssembly<T>(methodName);
 		}
 
 		public static IEnumerable<Instruction> SpillRegister(Register reg, IEnumerable<Instruction> containedInstructions)
@@ -51,7 +60,7 @@ namespace AssemblyTests
 
 		public static IEnumerable<Instruction> ZeroStackSSE2(uint stackBytes, byte stackOffset)
 		{
-			if (!((stackBytes & 0xF) == 0)) { throw new NotImplementedException(); }
+			if ((stackBytes & 0xF) != 0) { throw new NotImplementedException(); }
 
 			yield return Instruction.Create(Code.VEX_Vzeroupper);
 			yield return Instruction.Create(Code.VEX_Vxorps_xmm_xmm_xmmm128, Register.XMM0, Register.XMM0, Register.XMM0);

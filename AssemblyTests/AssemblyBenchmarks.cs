@@ -10,12 +10,12 @@ namespace AssemblyTests
 	[Config(typeof(MyConfig))]
 	public class AssemblyBenchmarks
 	{
-		private static Assembler.BasicActionDelegate s_overheadDelegate;
-		private static Assembler.BasicActionDelegate s_baselineDelegate;
-		private static Assembler.BasicActionDelegate s_improvedStosD;
-		private static Assembler.BasicActionDelegate s_improvedStosQ;
-		private static Assembler.BasicActionDelegate s_improvedStosB;
-		private static Assembler.BasicActionDelegate s_sse2;
+		private static Action s_overheadDelegate;
+		private static Action s_baselineDelegate;
+		private static Action s_improvedStosD;
+		private static Action s_improvedStosQ;
+		private static Action s_improvedStosB;
+		private static Action s_sse2;
 
 		private static readonly Assembler s_assembler = new Assembler();
 		
@@ -74,8 +74,92 @@ namespace AssemblyTests
 		public void ImprovedStosQ() => s_improvedStosQ();
 
 		[Benchmark]
-		public void SSE2() => s_sse2();
+		public void SSE2() => s_sse2();	
+	}
 
 
+	//This is just to give me an easy way to call it for jitdumps
+	public interface IBenchmark
+	{
+		void Test();
+	}
+
+	[Config(typeof(MyConfig))]
+	public class Asm<T> : IBenchmark where T : struct, IAsmDelegateVoid
+	{
+		[Benchmark] public void Test()
+		{	//Note - explicitly declaring a variable here helps the jit figure out it's not actually live
+			T dummy = default;
+			dummy.Invoke();
+		}
+	}
+
+	[Config(typeof(MyConfig))]
+	public class UnrolledAsm<T> where T : struct, IAsmDelegateVoid
+	{
+		[Benchmark]
+		public void TestTen()
+		{   //Note - explicitly declaring a variable here helps the jit figure out it's not actually live
+			T dummy = default;
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+			dummy.Invoke();
+		}
+	}
+
+	public static class TestSource
+	{
+		private static readonly Assembler s_assembler = new Assembler();
+		public static Type OverheadEstimateType() => s_assembler.CompileDelegateType<IAsmDelegateVoid>(Enumerable.Empty<Instruction>(), "Overhead");
+
+
+		public static IEnumerable<Type> GetBenchmarkTypes(Type openGeneric) => GetTheTypes().Select(typeParam => openGeneric.MakeGenericType(typeParam));
+
+		private static IEnumerable<Type> GetTheTypes()
+		{
+			yield return OverheadEstimateType();
+
+			foreach (var bytes in new[] { 32u, 64u/*, 128u, 256u, 512u, 1024u */})
+			{
+				var assembler = s_assembler;
+				yield return assembler.CompileDelegateType<IAsmDelegateVoid>(
+						Assembler.SpillRegister(Register.RDI,
+						Assembler.SpillRegister(Register.RSI,
+						Assembler.IncrementStack(bytes + 0x28,
+						Assembler.SaveRcxToANonVolatileRegister(
+						Assembler.ZeroStack(bytes, 0x28, 0x4
+						))))), "Baseline_" + bytes);
+
+				//yield return assembler.CompileDelegateType<IAsmDelegateVoid>(
+				//	Assembler.SpillRegister(Register.RDI,
+				//	Assembler.IncrementStack(bytes + 0x28,
+				//	Assembler.ZeroStack(bytes, 0x28, 0x1
+				//	))), "ImprovedStosB_" + bytes);
+
+				//yield return assembler.CompileDelegateType<IAsmDelegateVoid>(
+				//	Assembler.SpillRegister(Register.RDI,
+				//	Assembler.IncrementStack(bytes + 0x28,
+				//	Assembler.ZeroStack(bytes, 0x28, 0x4
+				//	))), "ImprovedStosD_" + bytes);
+
+				//yield return assembler.CompileDelegateType<IAsmDelegateVoid>(
+				//	Assembler.SpillRegister(Register.RDI,
+				//	Assembler.IncrementStack(bytes + 0x28,
+				//	Assembler.ZeroStack(bytes, 0x28, 0x8
+				//	))), "ImprovedStosQ_" + bytes);
+
+				yield return assembler.CompileDelegateType<IAsmDelegateVoid>(
+					Assembler.IncrementStack(bytes + 0x28,
+					Assembler.ZeroStackSSE2(bytes, 0x28
+					)), "SSE2_" + bytes);
+			}
+		}
 	}
 }
